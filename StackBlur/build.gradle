@@ -10,7 +10,7 @@ android {
     buildToolsVersion '19.0.3'
 
     defaultConfig {
-        renderscriptTargetApi 19
+        renderscriptTargetApi 18
         renderscriptSupportMode true
     }
 
@@ -26,7 +26,7 @@ android {
         }
 
         // Move the tests to tests/java, tests/res, etc...
-        instrumentTest.setRoot('tests')
+        androidTest.setRoot('tests')
 
         // Move the build types to build-types/<type>
         // For instance, build-types/debug/java, build-types/debug/AndroidManifest.xml, ...
@@ -44,7 +44,7 @@ task nativeLibsToJar(type: Zip, description: 'create a jar archive of the native
     baseName 'native-libs'
     extension 'jar'
     from fileTree(dir: 'libs', include: '**/*.so')
-    from fileTree(dir: 'renderscript', include: '**/*.so')
+    from fileTree(dir: "$buildDir/rs/release/lib", include: '**/*.so')
     into 'lib/'
 }
 

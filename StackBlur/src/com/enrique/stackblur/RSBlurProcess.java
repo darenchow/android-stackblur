@@ -2,11 +2,11 @@ package com.enrique.stackblur;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.os.Build;
 import android.support.v8.renderscript.Allocation;
 import android.support.v8.renderscript.Element;
 import android.support.v8.renderscript.RenderScript;
 
+import java.io.File;
 /**
  * @see JavaBlurProcess
  * Blur using renderscript.
@@ -17,6 +17,11 @@ class RSBlurProcess implements BlurProcess {
 
 	public RSBlurProcess(Context context) {
 		this.context = context.getApplicationContext();
+		// The renderscript support library makes symlinks in this directory, and it expects it to exist,
+		// so we have to make it.
+		// This is probably because renderscript from a library project is seemingly unsupported
+		File renderscriptCacheFile = new File(context.getCacheDir(), "com.android.renderscript.cache");
+		renderscriptCacheFile.mkdir();
 		_rs = RenderScript.create(this.context);
 	}
 
