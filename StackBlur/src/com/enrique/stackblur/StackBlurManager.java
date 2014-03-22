@@ -54,7 +54,9 @@ public class StackBlurManager {
 	/**
 	 * Method of blurring
 	 */
-	private final BlurProcess _blurProcess;
+	private final BlurProcess _javaBlurProcess;
+	private final BlurProcess _nativeBlurProcess;
+	private volatile BlurProcess _rsBlurProcess;
 
 	/**
 	 * Constructor method (basic initialization and construction of the pixel array)
@@ -62,7 +64,11 @@ public class StackBlurManager {
 	 */
 	public StackBlurManager(Bitmap image) {
 		_image = image;
-		_blurProcess = new JavaBlurProcess();
+		_javaBlurProcess = new JavaBlurProcess(image);
+		_nativeBlurProcess = new NativeBlurProcess(image);
+		if(!hasRS)
+			_rsBlurProcess = _nativeBlurProcess;
+		_result = image.copy(Bitmap.Config.ARGB_8888, true);
 	}
 
 	/**
@@ -70,8 +76,12 @@ public class StackBlurManager {
 	 * @param radius
 	 */
 	public Bitmap process(int radius) {
-		_result = _blurProcess.blur(_image, radius);
+		_result = _javaBlurProcess.blur(radius);
 		return _result;
+	}
+
+	public void process(int radius, Bitmap output) {
+		_javaBlurProcess.blur(radius, output);
 	}
 
 	/**
@@ -107,9 +117,12 @@ public class StackBlurManager {
 	 * Process the image using a native library
 	 */
 	public Bitmap processNatively(int radius) {
-		NativeBlurProcess blur = new NativeBlurProcess();
-		_result = blur.blur(_image, radius);
+		_result = _nativeBlurProcess.blur(radius);
 		return _result;
+	}
+
+	public void processNatively(int radius, Bitmap output) {
+		_nativeBlurProcess.blur(radius, output);
 	}
 
 	/**
@@ -119,25 +132,59 @@ public class StackBlurManager {
 	 * @param radius
 	 */
 	public Bitmap processRenderScript(Context context, float radius) {
-		BlurProcess blurProcess;
+		BlurProcess blur = _rsBlurProcess;
 		// The renderscript support library doesn't have .so files for ARMv6.
 		// Remember if there is an error creating the renderscript context,
 		// and fall back to NativeBlurProcess
-		if(hasRS) {
-			try {
-				blurProcess = new RSBlurProcess(context);
-			} catch (RSRuntimeException e) {
-				if(BuildConfig.DEBUG) {
-					Log.i("StackBlurManager", "Falling back to Native Blur", e);
+		if(blur == null) {
+			synchronized (this) {
+				blur = _rsBlurProcess;
+				if(blur == null) {
+					try {
+						blur = new RSBlurProcess(context, _image);
+					} catch (RSRuntimeException e) {
+						if(BuildConfig.DEBUG) {
+							Log.i("StackBlurManager", "Falling back to Native Blur", e);
+						}
+						blur = _nativeBlurProcess;
+						hasRS = false;
+					}
 				}
-				blurProcess = new NativeBlurProcess();
-				hasRS = false;
 			}
 		}
-		else {
-			blurProcess = new NativeBlurProcess();
-		}
-		_result = blurProcess.blur(_image, radius);
+		_result = blur.blur(radius);
 		return _result;
+	}
+
+	/**
+	 * Process the image using renderscript if possible
+	 * Fall back to native if renderscript is not available
+	 * @param context renderscript requires an android context
+	 * @param radius
+	 */
+	public void processRenderScript(Context context, float radius, Bitmap output) {
+		BlurProcess blur = _rsBlurProcess;
+		// The renderscript support library doesn't have .so files for ARMv6.
+		// Remember if there is an error creating the renderscript context,
+		// and fall back to NativeBlurProcess
+		if(blur == null) {
+			synchronized (this) {
+				blur = _rsBlurProcess;
+				if(blur == null) {
+					try {
+						blur = new RSBlurProcess(context, _image);
+						_rsBlurProcess = blur;
+					} catch (RSRuntimeException e) {
+						if(BuildConfig.DEBUG) {
+							Log.i("StackBlurManager", "Falling back to Native Blur", e);
+						}
+						blur = _nativeBlurProcess;
+						_rsBlurProcess = blur;
+						hasRS = false;
+					}
+				}
+			}
+		}
+		blur.blur(radius, output);
 	}
 }

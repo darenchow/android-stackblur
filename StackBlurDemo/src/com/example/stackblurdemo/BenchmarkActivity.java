@@ -8,14 +8,10 @@ import android.graphics.Paint;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.SystemClock;
-import android.util.Log;
-import android.view.View;
-import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.enrique.stackblur.StackBlurManager;
 
@@ -35,11 +31,16 @@ public class BenchmarkActivity extends RoboActivity {
 	@InjectView(R.id.result_img)          ImageView   _resultImage;
 
 	private BenchmarkTask _benchmarkTask;
+	private StackBlurManager blurManager;
+	private Bitmap inBitmap;
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_benchmark);
+
+		inBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.image_transparency);
+		blurManager = new StackBlurManager(inBitmap);
 
 		_blurAmt.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
 			@Override
@@ -88,59 +89,63 @@ public class BenchmarkActivity extends RoboActivity {
 			if(params.length != 1 || params[0] == null)
 				throw new IllegalArgumentException("Pass only 1 Integer to BenchmarkTask");
 			int blurAmount = params[0];
-			Bitmap inBitmap, blurredBitmap;
+			final Bitmap blurredBitmap = Bitmap.createBitmap(inBitmap.getWidth(), inBitmap.getHeight(), inBitmap.getConfig());
 			Paint paint = new Paint();
-
-			inBitmap = BitmapFactory.decodeResource(getResources(), R.drawable.image_transparency);
 
 			outBitmap = Bitmap.createBitmap(inBitmap.getWidth(), inBitmap.getHeight(), inBitmap.getConfig());
 			Canvas canvas = new Canvas(outBitmap);
 
+			System.gc();
+
 			long time;
-			StackBlurManager blurManager = new StackBlurManager(inBitmap);
 
 			BlurBenchmarkResult result;
 
 			// Java
 			time = SystemClock.elapsedRealtime();
-			blurredBitmap = blurManager.process(blurAmount);
+			blurManager.process(blurAmount, blurredBitmap);
 			result = new BlurBenchmarkResult("Java", (int) (SystemClock.elapsedRealtime() - time));
+
+			if(isCancelled())
+				return outBitmap;
+
 			canvas.save();
 			canvas.clipRect(0, 0, outBitmap.getWidth() / 3, outBitmap.getHeight());
 			canvas.drawBitmap(blurredBitmap, 0, 0, paint);
 			canvas.restore();
 			publishProgress(result);
-			blurredBitmap.recycle();
+
+			System.gc();
+
+			// Native
+			time = SystemClock.elapsedRealtime();
+			blurManager.processNatively(blurAmount, blurredBitmap);
+			result = new BlurBenchmarkResult("Native", (int) (SystemClock.elapsedRealtime() - time));
 
 			if(isCancelled())
 				return outBitmap;
 
-			// Native
-
-			time = SystemClock.elapsedRealtime();
-			blurredBitmap = blurManager.processNatively(blurAmount);
-			result = new BlurBenchmarkResult("Native", (int) (SystemClock.elapsedRealtime() - time));
 			canvas.save(Canvas.CLIP_SAVE_FLAG);
 			canvas.clipRect(outBitmap.getWidth() / 3, 0, 2 * outBitmap.getWidth() / 3, inBitmap.getHeight());
 			canvas.drawBitmap(blurredBitmap, 0, 0, paint);
 			canvas.restore();
 			publishProgress(result);
-			blurredBitmap.recycle();
+
+			System.gc();
+
+			// Renderscript
+			time = SystemClock.elapsedRealtime();
+			blurManager.processRenderScript(getApplicationContext(), blurAmount, blurredBitmap);
 
 			if(isCancelled())
 				return outBitmap;
 
-			// Renderscript
-			time = SystemClock.elapsedRealtime();
-			blurredBitmap = blurManager.processRenderScript(getApplicationContext(), blurAmount);
 			result = new BlurBenchmarkResult("Renderscript", (int) (SystemClock.elapsedRealtime() - time));
-
 			canvas.save();
 			canvas.clipRect(2 * outBitmap.getWidth() / 3, 0, outBitmap.getWidth(), outBitmap.getHeight());
 			canvas.drawBitmap(blurredBitmap, 0, 0, paint);
 			canvas.restore();
 			publishProgress(result);
-			blurredBitmap.recycle();
 
 			Paint linePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 			linePaint.setStyle(Paint.Style.STROKE);

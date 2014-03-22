@@ -1,6 +1,7 @@
 package com.enrique.stackblur;
 
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 
 import java.util.ArrayList;
 import java.util.concurrent.Callable;
@@ -9,38 +10,45 @@ import java.util.concurrent.Callable;
  * @see JavaBlurProcess
  * Blur using the NDK and native code.
  */
-class NativeBlurProcess implements BlurProcess {
+class NativeBlurProcess extends BlurProcess {
 	private static native void functionToBlur(Bitmap bitmapOut, int radius, int threadCount, int threadIndex, int round);
 
 	static {
 		System.loadLibrary("blur");
 	}
 
-	@Override
-	public Bitmap blur(Bitmap original, float radius) {
-		Bitmap bitmapOut = original.copy(Bitmap.Config.ARGB_8888, true);
+	private final Canvas _canvas = new Canvas();
 
+	public NativeBlurProcess(Bitmap original) {
+		setOriginal(original);
+	}
+
+	@Override
+	public void blur(float radius, Bitmap output) {
+		verifyBitmaps(original, output);
 		int cores = StackBlurManager.EXECUTOR_THREADS;
+
+		_canvas.setBitmap(output);
+		_canvas.drawBitmap(original, 0, 0, null);
 
 		ArrayList<NativeTask> horizontal = new ArrayList<NativeTask>(cores);
 		ArrayList<NativeTask> vertical = new ArrayList<NativeTask>(cores);
 		for (int i = 0; i < cores; i++) {
-			horizontal.add(new NativeTask(bitmapOut, (int) radius, cores, i, 1));
-			vertical.add(new NativeTask(bitmapOut, (int) radius, cores, i, 2));
+			horizontal.add(new NativeTask(output, (int) radius, cores, i, 1));
+			vertical.add(new NativeTask(output, (int) radius, cores, i, 2));
 		}
 
 		try {
 			StackBlurManager.EXECUTOR.invokeAll(horizontal);
 		} catch (InterruptedException e) {
-			return bitmapOut;
+			return;
 		}
 
 		try {
 			StackBlurManager.EXECUTOR.invokeAll(vertical);
 		} catch (InterruptedException e) {
-			return bitmapOut;
+			return;
 		}
-		return bitmapOut;
 	}
 
 	private static class NativeTask implements Callable<Void> {

@@ -32,7 +32,7 @@ import java.util.concurrent.Callable;
  * @copyright: Enrique López Mañas
  * @license: Apache License 2.0
  */
-class JavaBlurProcess implements BlurProcess {
+class JavaBlurProcess extends BlurProcess {
 
 	private static final short[] stackblur_mul = {
 			512, 512, 456, 512, 328, 456, 335, 512, 405, 328, 271, 456, 388, 335, 292, 512,
@@ -72,11 +72,23 @@ class JavaBlurProcess implements BlurProcess {
 			24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24
 	};
 
+	private int[] buffer;
+
+	public JavaBlurProcess(Bitmap original) {
+		setOriginal(original);
+	}
+
+	@Override public void setOriginal(Bitmap original) {
+		super.setOriginal(original);
+		buffer = new int[original.getWidth() * original.getHeight()];
+	}
+
 	@Override
-	public Bitmap blur(Bitmap original, float radius) {
+	public void blur(float radius, Bitmap output) {
+		verifyBitmaps(original, output);
 		int w = original.getWidth();
 		int h = original.getHeight();
-		int[] currentPixels = new int[w * h];
+		int[] currentPixels = buffer;
 		original.getPixels(currentPixels, 0, w, 0, 0, w, h);
 		int cores = StackBlurManager.EXECUTOR_THREADS;
 
@@ -90,16 +102,16 @@ class JavaBlurProcess implements BlurProcess {
 		try {
 			StackBlurManager.EXECUTOR.invokeAll(horizontal);
 		} catch (InterruptedException e) {
-			return null;
+			return;
 		}
 
 		try {
 			StackBlurManager.EXECUTOR.invokeAll(vertical);
 		} catch (InterruptedException e) {
-			return null;
+			return;
 		}
 
-		return Bitmap.createBitmap(currentPixels, w, h, Bitmap.Config.ARGB_8888);
+		output.setPixels(currentPixels, 0, w, 0, 0, w, h);
 	}
 
 	private static void blurIteration(int[] src, int w, int h, int radius, int cores, int core, int step) {

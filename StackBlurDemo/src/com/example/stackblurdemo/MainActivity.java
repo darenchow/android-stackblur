@@ -1,10 +1,5 @@
 package com.example.stackblurdemo;
 
-import java.io.IOException;
-import java.io.InputStream;
-
-import roboguice.activity.RoboActivity;
-import roboguice.inject.InjectView;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.AssetManager;
@@ -26,6 +21,12 @@ import android.widget.ToggleButton;
 
 import com.enrique.stackblur.StackBlurManager;
 
+import java.io.IOException;
+import java.io.InputStream;
+
+import roboguice.activity.RoboActivity;
+import roboguice.inject.InjectView;
+
 public class MainActivity extends RoboActivity {
     
 	@InjectView(R.id.imageView)        ImageView    _imageView;
@@ -37,6 +38,7 @@ public class MainActivity extends RoboActivity {
 	private StackBlurManager _stackBlurManager;
 	
 	private String IMAGE_TO_ANALYZE = "android_platform_256.png";
+	private Bitmap blurredOutput;
 	
 	private int blurMode;
 	
@@ -44,8 +46,10 @@ public class MainActivity extends RoboActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.activity_main);
-		
-		_stackBlurManager = new StackBlurManager(getBitmapFromAsset(this, "android_platform_256.png"));
+
+		Bitmap unblurred = getBitmapFromAsset(getApplicationContext(), IMAGE_TO_ANALYZE);
+		blurredOutput = Bitmap.createBitmap(unblurred.getWidth(), unblurred.getHeight(), unblurred.getConfig());
+		_stackBlurManager = new StackBlurManager(unblurred);
 		
 		_seekBar.setOnSeekBarChangeListener(new OnSeekBarChangeListener() {
 			
@@ -70,13 +74,13 @@ public class MainActivity extends RoboActivity {
 			public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
 				if (isChecked) {
 					IMAGE_TO_ANALYZE = "image_transparency.png";
-					_stackBlurManager = new StackBlurManager(getBitmapFromAsset(getApplicationContext(), IMAGE_TO_ANALYZE));
-					onBlur();
 				} else {
 					IMAGE_TO_ANALYZE = "android_platform_256.png";
-					_stackBlurManager = new StackBlurManager(getBitmapFromAsset(getApplicationContext(), IMAGE_TO_ANALYZE));
-					onBlur();
 				}
+				Bitmap unblurred = getBitmapFromAsset(getApplicationContext(), IMAGE_TO_ANALYZE);
+				blurredOutput = Bitmap.createBitmap(unblurred.getWidth(), unblurred.getHeight(), unblurred.getConfig());
+				_stackBlurManager = new StackBlurManager(unblurred);
+				onBlur();
 			}
 		});
 
@@ -137,14 +141,15 @@ public class MainActivity extends RoboActivity {
 		int radius = _seekBar.getProgress() * 5;
 		switch(blurMode) {
 			case 0:
-				_imageView.setImageBitmap( _stackBlurManager.process(radius) );
+				_stackBlurManager.process(radius, blurredOutput);
 				break;
 			case 1:
-				_imageView.setImageBitmap( _stackBlurManager.processNatively(radius) );
+				_stackBlurManager.processNatively(radius, blurredOutput);
 				break;
 			case 2:
-				_imageView.setImageBitmap( _stackBlurManager.processRenderScript(this, radius) );
+				_stackBlurManager.processRenderScript(this, radius, blurredOutput);
 				break;
 		}
+		_imageView.setImageBitmap(blurredOutput);
 	}
 }

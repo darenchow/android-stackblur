@@ -11,55 +11,55 @@ import java.io.File;
  * @see JavaBlurProcess
  * Blur using renderscript.
  */
-class RSBlurProcess implements BlurProcess {
-	private final Context context;
+class RSBlurProcess extends BlurProcess {
 	private final RenderScript _rs;
+	private Allocation rowsAllocation;
+	private Allocation columnsAllocation;
+	private final ScriptC_blur blurScript;
 
-	public RSBlurProcess(Context context) {
-		this.context = context.getApplicationContext();
-		// The renderscript support library makes symlinks in this directory, and it expects it to exist,
-		// so we have to make it.
-		// This is probably because renderscript from a library project is seemingly unsupported
+	public RSBlurProcess(Context context, Bitmap original) {
+		_rs = RenderScript.create(context.getApplicationContext());
 		File renderscriptCacheFile = new File(context.getCacheDir(), "com.android.renderscript.cache");
 		renderscriptCacheFile.mkdir();
-		_rs = RenderScript.create(this.context);
+		blurScript = new ScriptC_blur(_rs, context.getResources(), R.raw.blur);
+		setOriginal(original);
 	}
 
-	@Override
-	public Bitmap blur(Bitmap original, float radius) {
-		int width = original.getWidth();
+	@Override public void setOriginal(Bitmap original) {
+		super.setOriginal(original);
 		int height = original.getHeight();
-		Bitmap blurred = original.copy(Bitmap.Config.ARGB_8888, true);
-
-		ScriptC_blur blurScript = new ScriptC_blur(_rs, context.getResources(), R.raw.blur);
-
-		Allocation inAllocation = Allocation.createFromBitmap(_rs, blurred, Allocation.MipmapControl.MIPMAP_NONE, Allocation.USAGE_SCRIPT);
-
-		blurScript.set_gIn(inAllocation);
+		int width = original.getWidth();
 		blurScript.set_width(width);
 		blurScript.set_height(height);
-		blurScript.set_radius((int) radius);
-
 		int[] row_indices = new int[height];
 		for (int i = 0; i < height; i++) {
 			row_indices[i] = i;
 		}
 
-		Allocation rows = Allocation.createSized(_rs, Element.U32(_rs), height, Allocation.USAGE_SCRIPT);
-		rows.copyFrom(row_indices);
+		rowsAllocation = Allocation.createSized(_rs, Element.U32(_rs), height);
+		rowsAllocation.copyFrom(row_indices);
 
 		row_indices = new int[width];
 		for (int i = 0; i < width; i++) {
 			row_indices[i] = i;
 		}
 
-		Allocation columns = Allocation.createSized(_rs, Element.U32(_rs), width, Allocation.USAGE_SCRIPT);
-		columns.copyFrom(row_indices);
+		columnsAllocation = Allocation.createSized(_rs, Element.U32(_rs), width);
+		columnsAllocation.copyFrom(row_indices);
+	}
 
-		blurScript.forEach_blur_h(rows);
-		blurScript.forEach_blur_v(columns);
-		inAllocation.copyTo(blurred);
+	@Override
+	public void blur(float radius, Bitmap output) {
+		verifyBitmaps(original, output);
 
-		return blurred;
+		Allocation inAllocation = Allocation.createFromBitmap(_rs, output);
+		inAllocation.copyFrom(original);
+		blurScript.set_gIn(inAllocation);
+
+		blurScript.set_radius((int) radius);
+
+		blurScript.forEach_blur_h(rowsAllocation);
+		blurScript.forEach_blur_v(columnsAllocation);
+		inAllocation.copyTo(output);
 	}
 }
